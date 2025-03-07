@@ -5,21 +5,8 @@ on:
   schedule:
     - cron: '0 */4 * * *'
   
-  # Allow manual triggering
+  # Allow manual triggering without customizable inputs
   workflow_dispatch:
-    inputs:
-      place_deposits:
-        description: 'Set to true to place deposits, false to just scan'
-        required: true
-        default: 'false'
-      networks:
-        description: 'Networks to process (comma-separated, e.g., polkadot,kusama)'
-        required: true
-        default: 'polkadot,kusama'
-      track_ids:
-        description: 'Track IDs to monitor (comma-separated, e.g., 30,32)'
-        required: true
-        default: '30'
 
 jobs:
   run-depositor:
@@ -33,27 +20,25 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          # Remove cache option since we don't have a lock file yet
       
       - name: Install dependencies
-        # Use regular npm install instead of npm ci since there's no lock file
         run: npm install
       
       - name: Create .env file
         run: |
           cat > .env << EOF
           # Networks to process
-          NETWORKS=${{ github.event.inputs.networks || 'polkadot,kusama' }}
+          NETWORKS=polkadot,kusama
 
           # Account seed (from secrets)
           ACCOUNT_SEED=${{ secrets.ACCOUNT_SEED }}
           SS58_ADDRESS=${{ secrets.SS58_ADDRESS }}
 
           # Track IDs to monitor
-          TRACK_IDS=${{ github.event.inputs.track_ids || '30' }}
+          TRACK_IDS=${{ secrets.TRACK_IDS || '30' }}
 
           # Whether to place deposits
-          PLACE_DEPOSITS=${{ github.event.inputs.place_deposits || secrets.DEFAULT_PLACE_DEPOSITS || 'false' }}
+          PLACE_DEPOSITS=${{ secrets.PLACE_DEPOSITS || 'false' }}
 
           # RPC Endpoints
           POLKADOT_RPC_ENDPOINT=${{ secrets.POLKADOT_RPC_ENDPOINT || 'wss://rpc.polkadot.io' }}
@@ -62,12 +47,3 @@ jobs:
       
       - name: Run decision depositor
         run: node decision-depositor.js
-      
-      - name: Upload execution logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: execution-logs
-          path: |
-            *.log
-          retention-days: 7
