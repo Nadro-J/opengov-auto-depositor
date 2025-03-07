@@ -33,10 +33,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '18'
-          cache: 'npm'
+          # Remove cache option since we don't have a lock file yet
       
       - name: Install dependencies
-        run: npm ci
+        # Use regular npm install instead of npm ci since there's no lock file
+        run: npm install
       
       - name: Create .env file
         run: |
@@ -68,6 +69,5 @@ jobs:
         with:
           name: execution-logs
           path: |
-            logs/
             *.log
           retention-days: 7
