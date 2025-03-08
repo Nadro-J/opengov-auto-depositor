@@ -37,15 +37,13 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 async function processNetwork(networkKey) {
   const networkConfig = networks[networkKey];
   
-  console.log(`\n==== PROCESSING ${networkConfig.name.toUpperCase()} ====`);
-  console.log(`Connecting to ${networkConfig.wsEndpoint}...`);
-  
   try {
     await cryptoWaitReady();
     
     // Initialize the API
     const api = await ApiPromise.create({
-      provider: new WsProvider(networkConfig.wsEndpoint)
+      provider: new WsProvider(networkConfig.wsEndpoint),
+      noInitWarn: true
     });
     
     const [chain, nodeName, nodeVersion] = await Promise.all([
@@ -59,40 +57,39 @@ async function processNetwork(networkKey) {
     // Set up the signer
     const keyring = new Keyring({ type: 'sr25519' });
     const signer = keyring.addFromUri(networkConfig.accountSeed);
-    
-    console.log('\n--- ACCOUNT ---');
-    console.log(`Connected to chain: ${chain}`);
-    console.log(`Signer address: ${signer.address}`);
+  
     
     if (networkConfig.ss58Address && signer.address !== networkConfig.ss58Address) {
       console.log(`⚠️ Warning: The address generated from the seed (${signer.address}) doesn't match the provided SS58 address (${networkConfig.ss58Address})`);
     }
-    
-    // Get account balance
+
     const { data: balance } = await api.query.system.account(signer.address);
-    console.log(`Account balance: ${balance.free / Math.pow(10, token_decimals)} (free), ${balance.reserved / Math.pow(10, token_decimals)} (reserved)`);
-    
-    // Set the track IDs
     const trackIds = networkConfig.trackIds;
-    console.log(`Target track IDs: ${trackIds.join(', ')}`);
-    
+
+    const accountData = {
+      "Connected to chain": String(chain),
+      "Signer address": signer.address ,
+      "Account balance (free)": balance.free / Math.pow(10, token_decimals) ,
+      "Account balance (reserved)": balance.reserved / Math.pow(10, token_decimals),
+      "Target track IDs": trackIds.join(', ')
+    };
+
+  console.table(accountData);
     // Get all referenda
-    console.log('\nGetting all referenda...');
+    console.log('Getting all referenda...');
     
     if (!api.query.referenda.referendumInfoFor) {
       console.log('Cannot find referendumInfoFor query method. API structure may have changed.');
       await api.disconnect();
       return;
     }
-    
     const referendaEntries = await api.query.referenda.referendumInfoFor.entries();
-    console.log(`Total referenda found: ${referendaEntries.length}`);
-    
+
     // Process all referenda to find those of interest
     const allReferenda = [];
     const noDepositReferenda = [];
     
-    console.log('\nAnalyzing active referendums');
+    console.log('Analyzing active referendums...');
     
     for (const [key, value] of referendaEntries) {
       try {
@@ -123,7 +120,6 @@ async function processNetwork(networkKey) {
         });
         
         if (isTargetTrack && !hasDecisionDeposit) {
-          console.log(`Found target referendum #${referendumIndex} (track ${trackId}) without decision deposit`);
           noDepositReferenda.push({
             index: referendumIndex,
             track: trackId,
@@ -134,29 +130,21 @@ async function processNetwork(networkKey) {
         console.log(`Error processing referendum at index ${key.args[0].toNumber()}: ${err.message}`);
       }
     }
-    
-    console.log('\n--- SUMMARY ---');
-    console.log(`Total ongoing Referendums: ${allReferenda.length}`);
-    
-    // Count referenda by track
-    const targetTrackCounts = {};
-    trackIds.forEach(id => {
-      targetTrackCounts[id] = allReferenda.filter(r => r.track == id).length;
-      console.log(`Referendums on track ${id}: ${targetTrackCounts[id]}`);
-    });
-    
-    console.log(`Referendums on all target tracks: ${allReferenda.filter(r => r.isTargetTrack).length}`);
-    console.log(`Referendums without decision deposits (all tracks): ${allReferenda.filter(r => !r.hasDecisionDeposit).length}`);
-    console.log(`Target referendums without decision deposits: ${noDepositReferenda.length}`);
+
+    const referendumStats = {
+      "Total ongoing referendums": allReferenda.length,
+      "Referendums without decision deposits (all tracks)": allReferenda.filter(r => !r.hasDecisionDeposit).length,
+      "Referendums on all target tracks": allReferenda.filter(r => r.isTargetTrack).length,
+      "Target referendums without decision deposits": noDepositReferenda.length
+      };
+
+      console.table(referendumStats);
     
     if (noDepositReferenda.length > 0) {
-      console.log('\nReferenda without decision deposits that need action:');
+      console.log('Referenda without decision deposits that need action:');
       noDepositReferenda.forEach(ref => {
-        console.log(`- Referendum #${ref.index} (Track ${ref.track}), Submitted by: ${ref.submittedBy}`);
+        console.log(`📌 Referendum #${ref.index} (Track ${ref.track}), Submitted by: ${ref.submittedBy}`);
       });
-      
-      console.log('\nReferendum indices that need deposits (use this for batch operations):');
-      console.log(noDepositReferenda.map(r => r.index).join(', '));
       
       if (networkConfig.placeDeposits) {
         console.log('\nPlacing decision deposits...');
@@ -247,7 +235,7 @@ async function processNetwork(networkKey) {
             }
             
             // Add a delay between transactions to avoid nonce issues
-            console.log('Waiting 10 seconds before next transaction...');
+            console.log('🕞 Waiting 10 seconds before next transaction...');
             await sleep(10000);
             
           } catch (err) {
@@ -260,15 +248,18 @@ async function processNetwork(networkKey) {
             });
           }
         }
+
+        const extrinsicStats = {
+          "Total attempted": results.length,
+          "Successful": results.filter(r => r.success).length,
+          "Failed": results.filter(r => !r.success).length
+          };
+    
+        console.table(extrinsicStats);
         
-        // Display final results
-        console.log('\n--- DEPOSIT PLACEMENT RESULTS ---');
-        console.log(`Total attempted: ${results.length}`);
-        console.log(`Successful: ${results.filter(r => r.success).length}`);
-        console.log(`Failed: ${results.filter(r => !r.success).length}`);
-        
+
         if (results.filter(r => !r.success).length > 0) {
-          console.log('\nFailed deposits:');
+          console.log('Failed deposits:');
           results.filter(r => !r.success).forEach(r => {
             console.log(`- Referendum #${r.index} (Track ${r.track}): ${r.error || 'Unknown error'}`);
           });
@@ -283,7 +274,7 @@ async function processNetwork(networkKey) {
     }
     
     // Disconnect from the API
-    console.log('\nDisconnecting from the node...');
+    console.log('Disconnecting from the node...\n\n');
     await api.disconnect();
     
   } catch (error) {
