@@ -58,6 +58,8 @@ async function processNetwork(networkKey) {
     const keyring = new Keyring({ type: 'sr25519' });
     const signer = keyring.addFromUri(networkConfig.accountSeed);
     console.log(signer.address)
+    const { data: balance1 } = await api.query.system.account(signer.address);
+    console.log(balance1.free / Math.pow(10, token_decimals));
   
     
     if (networkConfig.ss58Address && signer.address !== networkConfig.ss58Address) {
