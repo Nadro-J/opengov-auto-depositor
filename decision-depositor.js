@@ -57,13 +57,6 @@ async function processNetwork(networkKey) {
     // Set up the signer
     const keyring = new Keyring({ type: 'sr25519' });
     const signer = keyring.addFromUri(networkConfig.accountSeed);
-    console.log(signer.address)
-
-
-    const { data: balance1 } = await api.query.system.account(signer.address);
-    console.log("Tokens decimals: ", token_decimals);
-    console.log("Free balance raw:", balance1.free.toString())
-    console.log("Free balance calculated: ", balance1.free / Math.pow(10, token_decimals));
   
     
     if (networkConfig.ss58Address && signer.address !== networkConfig.ss58Address) {
