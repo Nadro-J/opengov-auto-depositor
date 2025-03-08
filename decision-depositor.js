@@ -57,6 +57,7 @@ async function processNetwork(networkKey) {
     // Set up the signer
     const keyring = new Keyring({ type: 'sr25519' });
     const signer = keyring.addFromUri(networkConfig.accountSeed);
+    console.log(signer.address)
   
     
     if (networkConfig.ss58Address && signer.address !== networkConfig.ss58Address) {
